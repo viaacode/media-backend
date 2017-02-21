@@ -1,0 +1,6 @@
+---
+  swarmurl: objectstore.local.net
+  tsbucket: fragments
+  sourcebucket: media
+  redishost: localhost
+  beanstalkhost: webapp.local.net:11300

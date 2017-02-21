@@ -1,0 +1,6 @@
+[submodule "swarmbucket"]
+	path = swarmbucket
+	url = https://github.com/viaacode/swarmbucket.git
+[submodule "mpegts-segmenter"]
+	path = mpegts-segmenter
+	url = https://github.com/viaacode/mpegts-segmenter.git
