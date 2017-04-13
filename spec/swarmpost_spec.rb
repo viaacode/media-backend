@@ -5,19 +5,11 @@ include  TS_segemter_helper
 
 describe "SwarmPost::post" do
 
-    before :all do
-        @exp_playlist = m3u8_playlist
-        @exp_chunk_sizes = m3u8_chunk_sizes(@exp_playlist)
-    end
-    before :each do
-        stub_ts_parameters
-    end
     let (:ts_stream) do
         File.open 'spec/fixtures/BigBuckBunny_320x180.ts', 'rb'
     end
     let (:swarmhttp) { instance_double(SwarmBucket) }
-    let (:redis) { instance_double(Redis, :exists => false, :set => true) }
-    let (:m3u8) { double 'Net::HTTPResponse', body: @exp_playlist }
+    let (:redis) { instance_double(Redis, exists: false, set: true, del: true) }
 
     before :all do
         @exp_playlist = m3u8_playlist
@@ -26,9 +18,6 @@ describe "SwarmPost::post" do
 
     before :each do
         stub_ts_parameters
-    end
-
-    before :each do
         stub_const 'SwarmPost::SWARMHTTP', swarmhttp
         stub_const 'SwarmPost::REDIS', redis
         allow(Thread).to receive(:new).and_yield.and_return( double 'Thread',join: true )
@@ -42,6 +31,7 @@ describe "SwarmPost::post" do
             @tsobject += body
             fragment = /ts\.(\d+)$/.match(name)[1].to_i
             @postsize[fragment] = body.length
+            fragment == 1 ? post_response_1 : Net::HTTPSuccess.new(1.0, '200', "OK")
         end
         allow(IO).to receive(:popen).with(/.*ffmpeg -y -i http:\/\/mediahaven.prd.dg.viaa.be\/viaa\/path\/browse.mp4 -c copy -f mpegts pipe:1 <\/dev\/null 2>>log\/ffmpeg.log/) { ts_stream }
     end
@@ -74,31 +64,59 @@ describe "SwarmPost::post" do
     end
 
     context 'when the m3u8 playlist does not exist' do
+        let (:m3u8) { Net::HTTPNotFound.new 1.0, '404', 'Not Found' }
         before :each do
-            expect(Net::HTTPSuccess).to receive(:===).with(m3u8) { false }
             swarmpost('path/browse.mp4')
         end
 
-        it_behaves_like 'segment post agent'
+        context 'when fragments are posted without error' do
+            let (:post_response_1) {Net::HTTPSuccess.new 1.0, '200', 'failed'}
 
-        it 'generates and posts the playlist' do
-            is_expected.to have_received(:post)
-            .with('path/browse.m3u8',@exp_playlist, 'application/x-mpegurl',SwarmPost::RET_M3U8)
+            it_behaves_like 'segment post agent'
+
+            it 'generates and posts the playlist' do
+                is_expected.to have_received(:post)
+                .with('path/browse.m3u8',@exp_playlist, 'application/x-mpegurl',SwarmPost::RET_M3U8)
+            end
+
+            it "does not post other stuff" do
+                is_expected.to have_received(:post)
+                .exactly(5).times
+            end
         end
 
-        it "does not post other stuff" do
-            is_expected.to have_received(:post)
-            .exactly(5).times
+        context 'when fragments are posted wit error' do
+            let (:post_response_1) {Net::HTTPPreconditionFailed.new 1.0, '412', 'failed'}
+
+            it_behaves_like 'segment post agent'
+
+            it 'does not post the playlist' do
+                is_expected.not_to have_received(:post)
+                .with('path/browse.m3u8',@exp_playlist, 'application/x-mpegurl',SwarmPost::RET_M3U8)
+            end
+
+            it "does not post other stuff" do
+                is_expected.to have_received(:post)
+                .exactly(4).times
+            end
         end
+
     end
 
     context 'when the m3u8 playlist exists' do
+        let (:m3u8) { Net::HTTPSuccess.new 1.0, '200', 'OK' }
+        let (:post_response_1) {Net::HTTPPreconditionFailed.new 1.0, '412', 'failed'}
         before :each do
-            expect(Net::HTTPSuccess).to receive(:===).with(m3u8) { true }
+            allow(m3u8).to receive(:body).and_return @exp_playlist
             swarmpost('path/browse.mp4')
         end
 
         it_behaves_like 'segment post agent'
+
+        it 'does post the playlist' do
+            is_expected.not_to have_received(:post)
+            .with('path/browse.m3u8',@exp_playlist, 'application/x-mpegurl',SwarmPost::RET_M3U8)
+        end
 
         it "does not post other stuff" do
             is_expected.to have_received(:post)

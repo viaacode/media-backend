@@ -15,7 +15,7 @@ require_relative 'lib/tsstream'
 module SwarmPost
 
     config = YAML.load_file 'config.yaml'
-    SWARMHTTP = SwarmBucket.new config['swarmurl'], config['swarmbucket']
+    SWARMHTTP = SwarmBucket.new config['swarmurl'], config['tsbucket']
     SOURCEPATH = "http://#{config['swarmurl']}/#{config['sourcebucket']}"
 
     # Retention times
@@ -51,7 +51,6 @@ module SwarmPost
             puts 'in cache, ignoring'
             return
         end
-        puts :working
         REDIS.set target, 'working', ex: 60
 
         m3u8 = SWARMHTTP.get m3u8_url
@@ -64,19 +63,27 @@ module SwarmPost
 
         ts = TSStream.new "#{SOURCEPATH}/#{source_url}", m3u8_file
         threads = []
+        responses = []
         while ts.nextchunk do
             chunkid = ts.chunk_id
             chunkpayload = ts.chunk_payload
-            puts "posting #{ts.chunk_name}"
             threads << Thread.new do 
-                save_fragment target, chunkid, chunkpayload
+                responses << save_fragment(target, chunkid, chunkpayload)
             end
+            puts "posted #{ts.chunk_name}"
         end
-        threads.each { |t| t.join  }
-
-        puts 'posting m3u8_file'
-        SWARMHTTP.post m3u8_url,ts.playlist, 'application/x-mpegurl', RET_M3U8 unless m3u8_file
-        REDIS.set target, 'finished', ex: RET_TS/2
-
+        
+        # Wait for the post threads to complete
+        threads.each { |t| t.join  } 
+        if responses.all? { |r| r.is_a? Net::HTTPSuccess }
+            puts 'fragments uploaded successfully'
+            SWARMHTTP.post m3u8_url,ts.playlist, 'application/x-mpegurl', RET_M3U8 unless m3u8_file
+            REDIS.set target, 'finished', ex: RET_TS/2
+        else
+            failedfragments = responses.select { |r| ! r.is_a? Net::HTTPSuccess }
+            puts "#{failedfragments.length}/#{responses.length} fragments upload failed"
+            puts failedfragments
+            REDIS.del target
+        end
     end
 end
