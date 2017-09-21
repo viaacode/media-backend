@@ -14,8 +14,9 @@ STDOUT.sync = true
 
 config = YAML.load_file 'config.yaml'
 beanstalk = Beaneater.new config['beanstalkhost']
+queue = config['beanstalkqueue']
 
-beanstalk.jobs.register('m3u8') do |job| 
+beanstalk.jobs.register(queue) do |job| 
     swarmpost(job.body)
 end
 

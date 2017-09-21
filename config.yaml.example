@@ -4,3 +4,4 @@
   sourcebucket: media
   redishost: localhost
   beanstalkhost: webapp.local.net:11300
+  beanstalkqueue: prd

@@ -82,7 +82,7 @@ module SwarmPost
         else
             failedfragments = responses.select { |r| ! r.is_a? Net::HTTPSuccess }
             puts "#{failedfragments.length}/#{responses.length} fragments upload failed"
-            puts failedfragments
+            puts failedfragments.map { |r| r.body }
             REDIS.del target
         end
     end
