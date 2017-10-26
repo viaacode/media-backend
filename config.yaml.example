@@ -3,5 +3,7 @@
   tsbucket: fragments
   sourcebucket: media
   redishost: localhost
-  beanstalkhost: webapp.local.net:11300
+  beanstalkhost:
+    - webapp1.local.net:11300
+    - webapp2.local.net:11300
   beanstalkqueue: prd

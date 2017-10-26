@@ -13,12 +13,17 @@ include SwarmPost
 STDOUT.sync = true
 
 config = YAML.load_file 'config.yaml'
-beanstalk = Beaneater.new config['beanstalkhost']
 queue = config['beanstalkqueue']
+hosts = Array config['beanstalkhost']
+threads = []
 
-beanstalk.jobs.register(queue) do |job| 
-    swarmpost(job.body)
+hosts.each do |beanstalkhost|
+  beanstalk = Beaneater.new beanstalkhost
+  beanstalk.jobs.register(queue) do |job| 
+      swarmpost(job.body)
+  end
+  threads << Thread.new do 
+     beanstalk.jobs.process!
+  end
 end
-
-beanstalk.jobs.process!
-
+threads.each { |t| t.join }
