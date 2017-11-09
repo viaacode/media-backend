@@ -14,16 +14,10 @@ require_relative 'lib/tsstream'
 
 module SwarmPost
 
-    config = YAML.load_file 'config.yaml'
-    SWARMHTTP = SwarmBucket.new config['swarmurl'], config['tsbucket']
-    SOURCEPATH = "http://#{config['swarmurl']}/#{config['sourcebucket']}"
-
     # Retention times
     RET_M3U8 = 604800 # 7 days
     RET_TS_0 = RET_M3U8 + 14400
     RET_TS = 86400 # 1 day
-
-    REDIS = Redis.new  host: config['redishost']
 
     def save_fragment(name, index, buffer)
         retention = index == 0 ? RET_TS_0 : RET_TS
@@ -73,6 +67,10 @@ module SwarmPost
             puts "posted #{ts.chunk_name}"
         end
         
+        if ts.chunk_id == 1
+            puts 'add empty fragment'
+            save_fragment target, 1, ''
+        end
         # Wait for the post threads to complete
         threads.each { |t| t.join  } 
         if responses.all? { |r| r.is_a? Net::HTTPSuccess }

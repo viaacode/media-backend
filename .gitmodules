@@ -4,3 +4,6 @@
 [submodule "mpegts-segmenter"]
 	path = mpegts-segmenter
 	url = https://github.com/viaacode/mpegts-segmenter.git
+[submodule "audiowaveform"]
+	path = audiowaveform
+	url = https://github.com/viaacode/audiowaveform.git
