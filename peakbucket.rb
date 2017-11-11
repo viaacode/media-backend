@@ -14,28 +14,34 @@ require 'redis'
 require_relative 'lib/swarmbucket'
 require_relative 'lib/audiowaveform'
 
-module SwarmPeak
+class PeakBucket < SwarmBucket
 
-    def save_peak_data(name, waveformdata)
-        PEAK_BUCKET.post("#{name}", waveformdata, 'application/json')
+    def initialize options
+        @source_path = options.delete(:source_path)
+        @redis = options.delete(:redis)
+        super options
     end
 
-    def swarmpeak(name)
+    def save_peak_data(name, waveformdata)
+        post("#{name}", waveformdata, 'application/json')
+    end
+
+    def create(name)
         # strip 'extension'
         puts name
         target = name.sub(/\.[.\w]+$/,'.m4a')
-        if REDIS.exists name
+        if @redis.exists name
             puts 'in cache, ignoring'
             return
         end
-        REDIS.set name, 'working', ex: 30
+        @redis.set name, 'working', ex: 30
 
-        if PEAK_BUCKET.present? name
+        if present? name
             puts 'json exists!'
             return
         end
 
-        snd = Sound.new(source: "#{SOURCEPATH}/#{target}")
+        snd = Sound.new(source: "#{@source_path}/#{target}")
         puts "posting #{name}"
         save_peak_data name, snd.waveform.to_json
     end

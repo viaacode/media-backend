@@ -1,9 +1,14 @@
 ---
-  swarmurl: objectstore.local.net
-  tsbucket: fragments
-  sourcebucket: media
   redishost: localhost
   beanstalkhost:
-    - webapp1.local.net:11300
-    - webapp2.local.net:11300
-  beanstalkqueue: prd
+      - app.example.org:11300
+  url: assets.example.org
+  sourcebucket: video
+  mpegts: 
+      queue: mpegts
+      bucket: fragments
+  peak:
+      queue: peak
+      bucket: json
+      user: username
+      password:  secret

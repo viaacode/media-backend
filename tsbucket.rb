@@ -1,4 +1,4 @@
-# swarmpost
+# TsBucket
 # Reads an mp4 file and stores it as an mpegts stream in a set of chunks in a swarm
 # object store. Each chunk contains a set of HLS fragments.
 # if an m3u8 file is not availble, it is generated on the fly.
@@ -12,28 +12,34 @@ require 'redis'
 require_relative 'lib/swarmbucket'
 require_relative 'lib/tsstream'
 
-module SwarmPost
+class TsBucket < SwarmBucket
 
     # Retention times
     RET_M3U8 = 604800 # 7 days
     RET_TS_0 = RET_M3U8 + 14400
     RET_TS = 86400 # 1 day
 
-    def save_fragment(name, index, buffer)
-        retention = index == 0 ? RET_TS_0 : RET_TS
-        SWARMHTTP.post("#{name}.ts.#{index}", buffer, 'video/mpegts',retention)
+    def initialize options
+      @source_path = options.delete(:source_path)
+      @redis = options.delete(:redis)
+      super options
     end
 
-    def present?(name)
-        return true if REDIS.exists name
-        ttl = SWARMHTTP.present? name
+    def save_fragment(name, index, buffer)
+        retention = index == 0 ? RET_TS_0 : RET_TS
+        post("#{name}.ts.#{index}", buffer, 'video/mpegts',retention)
+    end
+
+    def exists?(name)
+        return true if @redis.exists name
+        ttl = self.present? name
         return false unless ttl
         expiry = ttl.is_a?(Fixnum) ? ttl : 86400
-        REDIS.set(name, expiry.to_s, ex: expiry) if expiry > 10
+        @redis.set(name, expiry.to_s, ex: expiry) if expiry > 10
         true
     end
 
-    def swarmpost(name)
+    def create(name)
         puts name
 
         # strip 'extension'
@@ -41,21 +47,21 @@ module SwarmPost
         m3u8_url = "#{target}.m3u8"
         source_url = "#{target}.mp4"
 
-        if REDIS.exists target
+        if @redis.exists target
             puts 'in cache, ignoring'
             return
         end
-        REDIS.set target, 'working', ex: 60
+        @redis.set target, 'working', ex: 60
 
-        m3u8 = SWARMHTTP.get m3u8_url
+        m3u8 = get m3u8_url
         m3u8_file = m3u8.body if Net::HTTPSuccess === m3u8
         puts m3u8_file ? 'm3u8_file found' : 'm3u8_file not found'
-        if m3u8_file && present?("#{target}.ts.1")
+        if m3u8_file && exists?("#{target}.ts.1")
             puts 'ts exists, nothing to do'
             return
         end
 
-        ts = TSStream.new "#{SOURCEPATH}/#{source_url}", m3u8_file
+        ts = TSStream.new "#{@source_path}/#{source_url}", m3u8_file
         threads = []
         responses = []
         while ts.nextchunk do
@@ -75,13 +81,13 @@ module SwarmPost
         threads.each { |t| t.join  } 
         if responses.all? { |r| r.is_a? Net::HTTPSuccess }
             puts 'fragments uploaded successfully'
-            SWARMHTTP.post m3u8_url,ts.playlist, 'application/x-mpegurl', RET_M3U8 unless m3u8_file
-            REDIS.set target, 'finished', ex: RET_TS/2
+            post m3u8_url,ts.playlist, 'application/x-mpegurl', RET_M3U8 unless m3u8_file
+            @redis.set target, 'finished', ex: RET_TS/2
         else
             failedfragments = responses.select { |r| ! r.is_a? Net::HTTPSuccess }
             puts "#{failedfragments.length}/#{responses.length} fragments upload failed"
             puts failedfragments.map { |r| r.body }
-            REDIS.del target
+            @redis.del target
         end
     end
 end

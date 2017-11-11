@@ -4,33 +4,38 @@
 #
 #require 'bundler/setup'
 require 'beaneater'
-require_relative 'swarmpost'
-require_relative 'swarmpeak'
+require_relative 'tsbucket'
+require_relative 'peakbucket'
 
-include SwarmPost
-include SwarmPeak
 
 # disable buffering of output so that activity can be followed
 # in real time when run by systemd
 STDOUT.sync = true
 
 config = YAML.load_file 'config.yaml'
-queue = config['beanstalkqueue']
+redis = Redis.new host: config['redishost']
 hosts = Array config['beanstalkhost']
 threads = []
 
-SWARMHTTP = SwarmBucket.new domain: config['swarmurl'], bucket: config['tsbucket']
-SOURCEPATH = "http://#{config['swarmurl']}/#{config['sourcebucket']}"
-REDIS = Redis.new  host: config['redishost']
-PEAK_BUCKET = SwarmBucket.new domain: config['swarmurl'], bucket: config['sourcebucket'], username: config['swarmuser'], password: config['swarmpassword']
+tsbucket = TsBucket.new domain: config['url'],
+    bucket: config['mpegts']['bucket'],
+    source_path:  "http://#{config['url']}/#{config['sourcebucket']}",
+    redis: redis
+
+peakbucket = PeakBucket.new domain: config['url'],
+    bucket: config['peak']['bucket'],
+    username: config['peak']['user'],
+    password: config['peak']['password'],
+    source_path:  "http://#{config['url']}/#{config['sourcebucket']}",
+    redis: redis
 
 hosts.each do |beanstalkhost|
     beanstalk = Beaneater.new beanstalkhost
-    beanstalk.jobs.register(queue) do |job| 
-        swarmpost(job.body)
+    beanstalk.jobs.register(config['mpegts']['queue']) do |job| 
+        tsbucket.create(job.body)
     end
-    beanstalk.jobs.register('peak') do |job| 
-        swarmpeak(job.body)
+    beanstalk.jobs.register(config['peak']['queue']) do |job| 
+        peakbucket.create(job.body)
     end
     threads << Thread.new do 
         beanstalk.jobs.process!
